@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 )
 
 type noaaAlerts struct {
@@ -40,6 +41,51 @@ func fetchActiveAlerts(forecastZone string) ([]alert, error) {
 	return alerts, nil
 }
 
+// Fetches the NDBC (National Data Buoy Center) realtime buoy data
+func fetchRealtimeBuoyData(buoyId string) (string, error) {
+	body, err := fetchURL(fmt.Sprintf("https://www.ndbc.noaa.gov/data/realtime2/%s.txt", buoyId))
+
+	if err != nil {
+		return "", fmt.Errorf("fetching alerts: %w", err)
+	}
+
+	return string(body), nil
+}
+
+// This gets the Marine text forecast. Its just a big text block of upcoming days text
+func fetchMarineForcastSummary(forcastZoneId string) (forcastSummary, error) {
+	body, err := fetchURL(fmt.Sprintf("https://tgftp.nws.noaa.gov/data/forecasts/marine/coastal/an/%s.txt", forcastZoneId))
+
+	if err != nil {
+		return forcastSummary{}, fmt.Errorf("fetching marine forecast summary: %w", err)
+	}
+
+	forcast, err := parseForecastSummary(string(body))
+	if err != nil {
+		return forcastSummary{}, fmt.Errorf("parsing marine forecast summary: %w", err)
+	}
+
+	return forcast, nil
+}
+
+// This gets any images we have at sea from a given buoy
+func fetchBuoyImages(buoyId string) (buoyImageData, error) {
+	baseUrl := "https://www.ndbc.noaa.gov"
+	body, err := fetchURL(fmt.Sprintf("%s/station_page.php?station=%s", baseUrl, buoyId))
+
+	if err != nil {
+		return buoyImageData{}, fmt.Errorf("fetching marine forecast summary: %w", err)
+	}
+
+	images, err := parseBuoyWebpage(string(body), baseUrl)
+	if err != nil {
+		return buoyImageData{}, fmt.Errorf("parsing marine forecast summary: %w", err)
+	}
+
+	return images, nil
+}
+
+// Shared general function to fetch NOAA API and get body
 func fetchURL(url string) ([]byte, error) {
 	req, _ := http.NewRequest("GET", url, nil)
 	req.Header.Set("User-Agent", "(jeby.com, team@jeby.com)")
@@ -54,5 +100,15 @@ func fetchURL(url string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if resp.StatusCode < 200 || resp.StatusCode > 300 {
+		s := string(body)
+		fields := strings.Fields(s)
+		s = strings.Join(fields, " ")
+		s = strings.ReplaceAll(s, `"`, "")
+		s = strings.ReplaceAll(s, `\`, "")
+		return nil, fmt.Errorf("unexpected status %d from %s: %s", resp.StatusCode, url, s)
+	}
+
 	return body, nil
 }
