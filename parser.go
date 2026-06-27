@@ -69,19 +69,32 @@ func parseDataPoint(s string) *float64 {
 	return &v
 }
 
-// Break out todays summary and the full fors
+// Break out full summary into periods
 func parseForecastSummary(data string) (forcastSummary, error) {
-	// Finds pattern of the next section header (.TONIGHT..., .SAT..., etc).
-	re := regexp.MustCompile(`(?s)\.\.\.(.*?)\n\.`)
-	m := re.FindStringSubmatch(data)
-	todaySummary := ""
-	if m != nil {
-		todaySummary = strings.TrimSpace(m[1])
+	headerRe := regexp.MustCompile(`(?m)^\.([A-Z0-9 /]+)\.\.\.`)
+
+	headers := headerRe.FindAllString(data, -1)
+	bodies := headerRe.Split(data, -1)[1:] // drop text before first header
+
+	var periods []forecastPeriod
+	for i, body := range bodies {
+		if idx := strings.Index(body, "\n\n"); idx != -1 {
+			body = body[:idx]
+		}
+		header := strings.TrimSuffix(strings.TrimPrefix(headers[i], "."), "...")
+		periods = append(periods, forecastPeriod{
+			Header: header,
+			Text:   strings.TrimSpace(strings.Join(strings.Fields(body), " ")),
+		})
 	}
 
-	return forcastSummary{Today: todaySummary, Full: data}, nil
+	return forcastSummary{
+		Periods: periods,
+		Full:    data,
+	}, nil
 }
 
+// Given the HTML for the NOAA buoy webpage, this will hunt and find the cool images
 func parseBuoyWebpage(html, baseURL string) (buoyImageData, error) {
 	var image360Url *string
 	re := regexp.MustCompile(`/images/buoycam/[^"]+`)

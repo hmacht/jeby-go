@@ -11,14 +11,19 @@ import (
 // Bumpy Score in a proprietary number to represent how rough it will be for your boat.
 // Requires boat length and weight to calculate.
 type marineConditions struct {
-	WaveHeight            *float64 `json:"waveHeight"`
-	WavePeriod            *float64 `json:"wavePeriod"`
-	WaveLength            *float64 `json:"waveLength"`
-	WindSpeed             *float64 `json:"windSpeed"`
-	WindDirection         *float64 `json:"windDirectionDegrees"`
-	WindDirectionCardinal *string  `json:"windDirectionCardinal"`
-	WaterTemp             *float64 `json:"waterTemp"`
-	BumpyScore            *int     `json:"bumpyScore"`
+	WaveHeight            *float64         `json:"waveHeight"`
+	WavePeriod            *float64         `json:"wavePeriod"`
+	WaveLength            *float64         `json:"waveLength"`
+	WindSpeed             *float64         `json:"windSpeed"`
+	WindDirection         *float64         `json:"windDirectionDegrees"`
+	WindDirectionCardinal *string          `json:"windDirectionCardinal"`
+	WaterTemp             *float64         `json:"waterTemp"`
+	BumpyScore            bumpyScoreResult `json:"bumpyScore"`
+}
+
+type bumpyScoreResult struct {
+	Score       *int     `json:"score"`
+	Disclaimers []string `json:"disclaimers"`
 }
 
 // Alerts are marine alerts such as small craft warning
@@ -34,8 +39,13 @@ type boat struct {
 }
 
 type forcastSummary struct {
-	Today string `json:"today"`
-	Full  string `json:"full"`
+	Periods []forecastPeriod `json:"periods"`
+	Full    string           `json:"full"`
+}
+
+type forecastPeriod struct {
+	Header string `json:"header"`
+	Text   string `json:"text"`
 }
 
 type buoyImageData struct {
@@ -104,7 +114,7 @@ func getMarineConditions(c *gin.Context) {
 }
 
 func getMarineForcastSummary(c *gin.Context) {
-	forcastZoneId := c.Query("zone")
+	forcastZoneId := c.Param("zoneId")
 
 	if forcastZoneId == "" {
 		c.IndentedJSON(http.StatusInternalServerError, errorResponse("Missing forcastZoneId"))
@@ -124,7 +134,7 @@ func getMarineForcastSummary(c *gin.Context) {
 // Reuqires a forecast zone which can be search using station endpoint
 // Vineyard sound is under: ANZ233
 func getActiveAlerts(c *gin.Context) {
-	zone := c.Query("zone")
+	zone := c.Param("zoneId")
 
 	alerts, err := fetchActiveAlerts(zone)
 	if err != nil {
@@ -150,10 +160,6 @@ func getBuoyImages(c *gin.Context) {
 	}
 
 	c.IndentedJSON(http.StatusOK, images)
-}
-
-func getTides(c *gin.Context) {
-	// TODO: Implement
 }
 
 func errorResponse(message string) gin.H {

@@ -54,7 +54,7 @@ func fetchRealtimeBuoyData(buoyId string) (string, error) {
 
 // This gets the Marine text forecast. Its just a big text block of upcoming days text
 func fetchMarineForcastSummary(forcastZoneId string) (forcastSummary, error) {
-	body, err := fetchURL(fmt.Sprintf("https://tgftp.nws.noaa.gov/data/forecasts/marine/coastal/an/%s.txt", forcastZoneId))
+	body, err := fetchURL(fmt.Sprintf("https://tgftp.nws.noaa.gov/data/forecasts/marine/coastal/an/%s.txt", strings.ToLower(forcastZoneId)))
 
 	if err != nil {
 		return forcastSummary{}, fmt.Errorf("fetching marine forecast summary: %w", err)

@@ -33,6 +33,18 @@ const columnLength = 18
 // TODO: tune this
 const weightDensityConstant = 5.0
 
+// BumpyScore Tuning Scales
+const (
+	steepnessMultiplier    = 400.0
+	windMultiplier         = 1.1
+	heightMultiplier       = 30.0
+	heightExponent         = 2.0
+	northerWavesMultiplier = 1.3
+	ratioMultiplierX1      = 30.0
+	ratioMultiplierX2      = 15.0
+	ratioMultiplierX3      = 0.0
+)
+
 // Given the NOAA realtime file dataset, lets calculate some conditions
 // This is all tailored to Marthas Vineyard, MA
 //
@@ -60,7 +72,7 @@ func calculateMarineConditions(data string, boat boat, avgOceanDepth *float64) (
 		WindSpeed:             windSpeedAvg,
 		WindDirection:         windDirectionAvg,
 		WindDirectionCardinal: calculateCardinalDirection(windDirectionAvg),
-		BumpyScore:            calculateDaBumpyScore(waveHeightAvg, waveLengthAvg, waveDirectionAvg, windSpeedAvg, boat),
+		BumpyScore:            calculateDaBumpyScore(waveHeightAvg, waveLengthAvg, waveDirectionAvg, windDirectionAvg, windSpeedAvg, boat),
 		WaterTemp:             waterTempAvg,
 	}, nil
 }
@@ -86,27 +98,42 @@ func average(readings []BuoyReading, getField func(BuoyReading) *float64) *float
 // What we need is real world data to refine this
 // We are doing the calculation tailored for Vineyard Sound right now.
 // In the future we will take into account locations
-func calculateDaBumpyScore(waveHeight, wavelength, waveDirection, windSpeed *float64, boat boat) *int {
-	if waveHeight == nil || wavelength == nil || waveDirection == nil || windSpeed == nil {
-		return nil
+func calculateDaBumpyScore(waveHeight, wavelength, waveDirection, windDirection, windSpeed *float64, boat boat) bumpyScoreResult {
+	disclaimers := []string{"This score is tailored to Northern Atlantic waters"}
+
+	// Validate core data
+	if waveHeight == nil || wavelength == nil || windSpeed == nil {
+		disclaimers = append(disclaimers, "Could not pull one of the core metrics from buoy: Wave Height, Wave Length, Wind Speed.")
+		return bumpyScoreResult{
+			Score:       nil,
+			Disclaimers: disclaimers,
+		}
 	}
 
-	steepness := *waveHeight / *wavelength
-	lengthRatio := *wavelength / boat.Length
+	// Validate non essensial data
+	if waveDirection == nil && windDirection != nil {
+		disclaimers = append(disclaimers, "Used wind direction as substitute for wave direction.")
+		waveDirection = windDirection
+	} else {
+		disclaimers = append(disclaimers, "Wave direction is not accounted for.")
+	}
 
 	// Steepness
-	steepnessScore := steepness * 400.0
+	steepness := *waveHeight / *wavelength
+	steepnessDamping := math.Min(*waveHeight/1.0, 1.0)
+	steepnessScore := steepness * steepnessMultiplier * steepnessDamping
 
 	// Wind
-	windScore := *windSpeed * 2.0
+	windScore := *windSpeed * windMultiplier
 
 	// Heigh
 	//
+	// Expenationa from 1-5 ft waves
 	// The wave direction is a multipliter on the hight
 	// Norther waves are much rougher, 30% bang
-	heightScore := *waveHeight * 25.0
-	if *waveDirection >= 315 || *waveDirection <= 45 {
-		heightScore *= 1.3
+	heightScore := math.Pow(*waveHeight, heightExponent) * heightMultiplier
+	if waveDirection != nil && (*waveDirection >= 315 || *waveDirection <= 45) {
+		heightScore *= northerWavesMultiplier
 	}
 
 	// Wavelength
@@ -116,14 +143,15 @@ func calculateDaBumpyScore(waveHeight, wavelength, waveDirection, windSpeed *flo
 	// But tighter waves ride smoothly under boat.
 	// Ratio < 1 means wavelength shorter than the boat itself — worst case.
 	// Ratio > 2-3 means the boat rides over smoothly — minimal penalty.
+	lengthRatio := *wavelength / boat.Length
 	var ratioMultiplier float64
 	switch {
 	case lengthRatio < 1:
-		ratioMultiplier = 30.0
+		ratioMultiplier = ratioMultiplierX1
 	case lengthRatio < 2:
-		ratioMultiplier = 15.0
+		ratioMultiplier = ratioMultiplierX2
 	default:
-		ratioMultiplier = 0.0
+		ratioMultiplier = ratioMultiplierX3
 	}
 
 	// Scale the ratio penalty by wave height
@@ -139,15 +167,18 @@ func calculateDaBumpyScore(waveHeight, wavelength, waveDirection, windSpeed *flo
 
 	// Score cant exceed 100
 	if bumpyScore > 100 {
-		return new(100)
+		bumpyScore = 100
 	}
 
 	// Score cant be below 0
 	if bumpyScore < 0 {
-		return new(0)
+		bumpyScore = 0
 	}
 
-	return new(int(round(bumpyScore, 0)))
+	return bumpyScoreResult{
+		Score:       new(int(round(bumpyScore, 0))),
+		Disclaimers: disclaimers,
+	}
 }
 
 func calculateCardinalDirection(degrees *float64) *string {
