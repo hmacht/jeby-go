@@ -88,7 +88,7 @@ func fetchBuoyImages(buoyId string) (buoyImageData, error) {
 // Shared general function to fetch NOAA API and get body
 func fetchURL(url string) ([]byte, error) {
 	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("User-Agent", "(jeby.com, team@jeby.com)")
+	req.Header.Set("User-Agent", "(jeby.org, team@jeby.org)")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
