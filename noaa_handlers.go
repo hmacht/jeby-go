@@ -10,7 +10,7 @@ import (
 // Conditions about the mighty ocean
 // Bumpy Score in a proprietary number to represent how rough it will be for your boat.
 // Requires boat length and weight to calculate.
-type marineConditions struct {
+type Conditions struct {
 	WaveHeight            *float64         `json:"waveHeight"`
 	WavePeriod            *float64         `json:"wavePeriod"`
 	WaveLength            *float64         `json:"waveLength"`
@@ -52,9 +52,9 @@ type buoyImageData struct {
 	Image360Url *string `json:"image360"`
 }
 
-// getMarineConditions responds with the current NOAA conditions as JSON.
+// getNoaaConditions responds with the current NOAA conditions as JSON.
 // Nantucket Sound Buoy is 44020
-func getMarineConditions(c *gin.Context) {
+func getNoaaConditions(c *gin.Context) {
 	buoyId := c.Param("buoyId")
 	boatLengthStr := c.Query("boatLength")
 	boatWeightStr := c.Query("boatWeight")
@@ -104,7 +104,7 @@ func getMarineConditions(c *gin.Context) {
 		return
 	}
 
-	condizioni, err := calculateMarineConditions(data, boatDetails, avgOceanDepth)
+	condizioni, err := calculateNoaaConditions(data, boatDetails, avgOceanDepth)
 	if err != nil {
 		c.IndentedJSON(http.StatusInternalServerError, errorResponse(err.Error()))
 		return

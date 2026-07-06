@@ -28,6 +28,20 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
+	// Background BumpyScore worker: compute the score off the request path and
+	// serve it from the store. Root context is cancelled on shutdown below.
+	rootCtx, cancelWorkers := context.WithCancel(context.Background())
+	defer cancelWorkers()
+
+	bumpy := newBumpyStore()
+	if mvcoWorkerDisabled() {
+		log.Print("BumpyScore worker disabled: MVCO_WORKER_DISABLED is set")
+	} else if ai, err := newClaudeClient(); err != nil {
+		log.Printf("BumpyScore worker disabled: %v", err)
+	} else {
+		startMvcoBumpyWorker(rootCtx, ai, bumpy, MvcoRefreshInterval)
+	}
+
 	router := gin.Default()
 
 	router.GET("/healthz", func(c *gin.Context) {
@@ -37,10 +51,13 @@ func main() {
 	v1 := router.Group("/api/v1")
 	v1.Use(middleware.APIKeyAuth(apiKey))
 	{
-		v1.GET("/marine/buoys/:buoyId/conditions", getMarineConditions)
-		v1.GET("/marine/buoys/:buoyId/images", getBuoyImages)
-		v1.GET("/marine/zones/:zoneId/forecast/summary", getMarineForcastSummary)
-		v1.GET("/marine/zones/:zoneId/alerts/active", getActiveAlerts)
+		v1.GET("/noaa/buoys/:buoyId/conditions", getNoaaConditions)
+		v1.GET("/noaa/buoys/:buoyId/images", getBuoyImages)
+		v1.GET("/noaa/zones/:zoneId/forecast/summary", getMarineForcastSummary)
+		v1.GET("/noaa/zones/:zoneId/alerts/active", getActiveAlerts)
+
+		v1.GET("/whoi/mvco/images", getMvcoImageData)
+		v1.GET("/whoi/mvco/conditions", getMvcoConditions(bumpy))
 	}
 
 	srv := &http.Server{

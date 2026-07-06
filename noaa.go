@@ -8,6 +8,7 @@ import (
 	"strings"
 )
 
+// Shape for NOAA Alert from API call
 type noaaAlerts struct {
 	Title    string `json:"title"`
 	Features []struct {
