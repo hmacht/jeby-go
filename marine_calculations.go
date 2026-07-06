@@ -6,7 +6,7 @@ import "math"
 // What we need is real world data to refine this
 // We are doing the calculation tailored for Vineyard Sound right now.
 // In the future we will take into account locations
-func calculateDaBumpyScore(waveHeight, wavelength, waveDirection, windDirection, windSpeed *float64, boat boat) bumpyScoreResult {
+func calculateDaBumpyScore(waveHeight, wavelength, waveDirection, windDirection, windSpeed *float64) bumpyScoreResult {
 	disclaimers := []string{"This score is tailored to Northern Atlantic waters"}
 
 	// Validate core data
@@ -44,33 +44,7 @@ func calculateDaBumpyScore(waveHeight, wavelength, waveDirection, windDirection,
 		heightScore *= northerWavesMultiplier
 	}
 
-	// Wavelength
-	//
-	// Wave length is super importat lets see if this thang has hobby-horsing
-	// There is a sweetspot on a boat where if wave length is in, the boat keeps smashing into waves.
-	// But tighter waves ride smoothly under boat.
-	// Ratio < 1 means wavelength shorter than the boat itself — worst case.
-	// Ratio > 2-3 means the boat rides over smoothly — minimal penalty.
-	lengthRatio := *wavelength / boat.Length
-	var ratioMultiplier float64
-	switch {
-	case lengthRatio < 1:
-		ratioMultiplier = ratioMultiplierX1
-	case lengthRatio < 2:
-		ratioMultiplier = ratioMultiplierX2
-	default:
-		ratioMultiplier = ratioMultiplierX3
-	}
-
-	// Scale the ratio penalty by wave height
-	ratioScore := ratioMultiplier * math.Min(*waveHeight/1.0, 1.0)
-
-	// We dampen the rockyness if the boat is heavier
-	// The 1.5 is just a cap for lighter boats
-	expectedWeight := weightDensityConstant * boat.Length * boat.Length * boat.Length
-	weightFactor := math.Min(expectedWeight/boat.Weight, 1.5)
-
-	motionScore := (heightScore + steepnessScore + ratioScore) * weightFactor
+	motionScore := heightScore + steepnessScore
 	bumpyScore := motionScore + windScore
 
 	// Score cant exceed 100

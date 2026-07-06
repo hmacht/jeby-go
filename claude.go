@@ -22,15 +22,21 @@ type claudeClient struct {
 	model  anthropic.Model
 }
 
-// newClaudeClient reads ANTHROPIC_API_KEY from the environment.
+// newClaudeClient reads ANTHROPIC_API_KEY from the environment. The model
+// defaults to claudeModel but can be overridden with ANTHROPIC_MODEL, so you can
+// swap models without a rebuild.
 func newClaudeClient() (*claudeClient, error) {
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	if apiKey == "" {
 		return nil, errors.New("ANTHROPIC_API_KEY not set")
 	}
+	model := claudeModel
+	if m := strings.TrimSpace(os.Getenv("ANTHROPIC_MODEL")); m != "" {
+		model = anthropic.Model(m)
+	}
 	return &claudeClient{
 		client: anthropic.NewClient(option.WithAPIKey(apiKey)),
-		model:  claudeModel,
+		model:  model,
 	}, nil
 }
 

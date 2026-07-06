@@ -36,7 +36,7 @@ func main() {
 	bumpy := newBumpyStore()
 	if mvcoWorkerDisabled() {
 		log.Print("BumpyScore worker disabled: MVCO_WORKER_DISABLED is set")
-	} else if ai, err := newClaudeClient(); err != nil {
+	} else if ai, err := newAIClient(); err != nil {
 		log.Printf("BumpyScore worker disabled: %v", err)
 	} else {
 		startMvcoBumpyWorker(rootCtx, ai, bumpy, MvcoRefreshInterval)
@@ -51,13 +51,10 @@ func main() {
 	v1 := router.Group("/api/v1")
 	v1.Use(middleware.APIKeyAuth(apiKey))
 	{
-		v1.GET("/noaa/buoys/:buoyId/conditions", getNoaaConditions)
-		v1.GET("/noaa/buoys/:buoyId/images", getBuoyImages)
-		v1.GET("/noaa/zones/:zoneId/forecast/summary", getMarineForcastSummary)
-		v1.GET("/noaa/zones/:zoneId/alerts/active", getActiveAlerts)
-
-		v1.GET("/whoi/mvco/images", getMvcoImageData)
-		v1.GET("/whoi/mvco/conditions", getMvcoConditions(bumpy))
+		v1.GET("/conditions", getConditions(bumpy))
+		v1.GET("/images", getImages)
+		v1.GET("/forecast/marine", getMarineForcastSummary)
+		v1.GET("/alerts", getActiveAlerts)
 	}
 
 	srv := &http.Server{

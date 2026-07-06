@@ -20,11 +20,12 @@ ride will be. Weigh significant wave height and period most heavily, then swell 
 then trends implied by pressure. Northerly waves in the Sound are rougher than their height suggests.
 
 Respond with ONLY a JSON object, no prose and no markdown fences, in exactly this shape:
-{"score": <integer 0-100>, "disclaimers": [<short strings noting assumptions or missing data>]}`
+{"score": <integer 0-100>, "analysis": <plain-language summary of the conditions, 3 sentences max>, "disclaimers": [<short strings noting assumptions or missing data>]}`
 
 // aiBumpyScore is the JSON contract we ask the model to return.
 type aiBumpyScore struct {
 	Score       *int     `json:"score"`
+	Analysis    *string  `json:"analysis"`
 	Disclaimers []string `json:"disclaimers"`
 }
 
@@ -44,10 +45,10 @@ func calculateBumpyScoreFromMVCO(ctx context.Context, ai AIClient, reading MvcoR
 		return bumpyScoreResult{}, fmt.Errorf("parsing ai bumpy score from %q: %w", raw, err)
 	}
 
-	disclaimers := append([]string{"Score estimated by AI from live MVCO data."}, parsed.Disclaimers...)
 	return bumpyScoreResult{
 		Score:       parsed.Score,
-		Disclaimers: disclaimers,
+		Analysis:    parsed.Analysis,
+		Disclaimers: parsed.Disclaimers,
 	}, nil
 }
 
