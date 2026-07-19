@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -84,13 +86,37 @@ func getImages(c *gin.Context) {
 	c.IndentedJSON(http.StatusOK, images)
 }
 
-// getConditions serves the unified Vineyard conditions: a single AI BumpyScore
-// plus the ocean readings from both the MVCO sensor and the NOAA buoy. The
-// BumpyScore is computed by the background worker (see mvco_worker.go) and read
-// from the store here, so a request never blocks on an AI call.
+// getVessels serves the vessel registry: every vessel's code, name, and specs.
+func getVessels(c *gin.Context) {
+	c.IndentedJSON(http.StatusOK, vessels)
+}
+
+// getStations serves the station registry: every station's code, name, location,
+// and links.
+func getStations(c *gin.Context) {
+	c.IndentedJSON(http.StatusOK, stations)
+}
+
+// getConditions serves the Vineyard conditions for one vessel, named by the
+// required `vessel` query parameter (its code). The response carries that
+// vessel's AI BumpyScore plus the ocean readings from both the MVCO sensor and
+// the NOAA buoy. BumpyScores are computed by the background worker (see
+// mvco_worker.go) and read from the store here, so a request never blocks on an
+// AI call.
 func getConditions(store *bumpyStore) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		bumpyScore, _, ok := store.get()
+		code := strings.ToUpper(strings.TrimSpace(c.Query("vessel")))
+		if code == "" {
+			c.IndentedJSON(http.StatusBadRequest, errorResponse("query parameter 'vessel' is required"))
+			return
+		}
+		vessel, ok := vesselByCode(code)
+		if !ok {
+			c.IndentedJSON(http.StatusBadRequest, errorResponse(fmt.Sprintf("unknown vessel code %q", code)))
+			return
+		}
+
+		bumpyScore, ok := store.get(code)
 		if !ok {
 			bumpyScore = bumpyScoreResult{
 				Disclaimers: []string{"BumpyScore not computed yet — check back shortly."},
@@ -99,6 +125,7 @@ func getConditions(store *bumpyStore) gin.HandlerFunc {
 		}
 
 		c.IndentedJSON(http.StatusOK, Conditions{
+			Vessel:     vessel,
 			BumpyScore: bumpyScore,
 			MVCO:       buildMvcoStationConditions(),
 			Buoy:       buildBuoyStationConditions(),

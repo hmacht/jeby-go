@@ -34,12 +34,12 @@ func main() {
 	defer cancelWorkers()
 
 	bumpy := newBumpyStore()
-	if mvcoWorkerDisabled() {
-		log.Print("BumpyScore worker disabled: MVCO_WORKER_DISABLED is set")
+	if bumpyScoreWorkerDisabled() {
+		log.Print("BumpyScore worker disabled: BUMPY_SCORE_WORKER_DISABLED is set")
 	} else if ai, err := newAIClient(); err != nil {
 		log.Printf("BumpyScore worker disabled: %v", err)
 	} else {
-		startMvcoBumpyWorker(rootCtx, ai, bumpy, MvcoRefreshInterval)
+		startBumpyScoreWorker(rootCtx, ai, bumpy, bumpyScoreRefreshInterval())
 	}
 
 	router := gin.Default()
@@ -51,6 +51,8 @@ func main() {
 	v1 := router.Group("/api/v1")
 	v1.Use(middleware.APIKeyAuth(apiKey))
 	{
+		v1.GET("/vessels", getVessels)
+		v1.GET("/stations", getStations)
 		v1.GET("/conditions", getConditions(bumpy))
 		v1.GET("/images", getImages)
 		v1.GET("/forecast/marine", getMarineForcastSummary)

@@ -7,9 +7,11 @@ import "log"
 
 const MarthasVineyardAverageDepthMeters = 13.0
 
-// Conditions is the full Vineyard conditions response: a single BumpyScore plus
-// the ocean readings from each station we pull.
+// Conditions is the full Vineyard conditions response for one vessel: the vessel
+// it's for, that vessel's BumpyScore, and the ocean readings from each station
+// we pull.
 type Conditions struct {
+	Vessel     Vessel            `json:"vessel"`
 	BumpyScore bumpyScoreResult  `json:"bumpyScore"`
 	MVCO       StationConditions `json:"mvco"`
 	Buoy       StationConditions `json:"buoy"`
@@ -41,8 +43,8 @@ const (
 	unitMeters          = "m"
 	unitSeconds         = "s"
 	unitMetersPerSecond = "m/s"
-	unitDegrees         = "°"
-	unitCelsius         = "°C"
+	unitDegrees         = "deg"
+	unitCelsius         = "C"
 )
 
 // measure pairs a value with its unit.
