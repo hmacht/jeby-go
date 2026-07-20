@@ -21,17 +21,22 @@ the nearby NOAA buoy — plus a list of vessels. Estimate a "BumpyScore" for EAC
 current conditions.
 
 Reason over BOTH stations together. They sample slightly different spots, so treat them as corroborating
-readings: when they agree you can be confident, and when they disagree, lean toward the rougher picture. If
-there is a large discrepancy between the two data sets (for example wave height or wind speed differing
-substantially), call that out in the analysis and note it in the disclaimers.
+readings: the MVCO sits off the back (southside) of the island while the buoy sits in the sound but closer to nantucket sound.
+the buoy is also closer to the path of travel in the vineard sound so lean on it more. The MVCO is also closer to shore.
+
+Northerly waves in the Sound are rougher than their height suggests.
 
 The same seas feel very different from boat to boat: larger, heavier, longer vessels ride more smoothly, and
 more horsepower helps hold course and speed. Weigh each vessel's length, weight, horsepower, and passenger
 capacity against significant wave height and period, then swell vs wind waves, then wind speed, then trends
-implied by pressure. Northerly waves in the Sound are rougher than their height suggests.
+implied by pressure.
 
-Dont specify the vessels details in the analysis, just refrence it by name. For the larger vessele, Steamship,
-Island Queen, and Large Crafts, recomend outside or inside or if its calm enough and dosent matter you can specify that too.
+Notes for the analysis:
+- Focus on how the ride will feel for your specific vessel.
+- Dont specify the vessels details or code in the analysis, just refrence it by name.
+- For the larger vessele, Steamship, Island Queen, and Large Crafts, recomend outside
+or inside or if its calm enough and dosent matter you can specify that too.
+- Dont talk about the differt locations of the stations.
 
 Respond with ONLY a JSON object, no prose and no markdown fences, in exactly this shape:
 {"vessels":[{"code":<vessel code>,"score":<integer 0-100>,"analysis":<plain-language summary for this vessel, 3 sentences max>,"disclaimers":[<short strings noting assumptions or missing data>]}]}
@@ -124,7 +129,7 @@ func describeMvcoReading(r MvcoReading) string {
 	return b.String()
 }
 
-// describeBuoyReadings renders the averaged NOAA buoy conditions so the model can
+// describeBuoyReadings renders the latest NOAA buoy conditions so the model can
 // cross-check them against the MVCO reading. It's the second data source the
 // scorer weighs; large gaps between the two stations are worth flagging.
 func describeBuoyReadings(b StationConditions) string {
@@ -134,7 +139,7 @@ func describeBuoyReadings(b StationConditions) string {
 	}
 
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "NOAA buoy %s reading (Nantucket Sound), recent average:\n", vineyardBuoyID)
+	fmt.Fprintf(&sb, "NOAA buoy %s reading (Nantucket Sound), latest:\n", vineyardBuoyID)
 	fmt.Fprintf(&sb, "- Significant wave height (m): %s\n", fmtPtr(b.WaveHeight.Value))
 	fmt.Fprintf(&sb, "- Average wave period (s): %s\n", fmtPtr(b.WavePeriod.Value))
 	fmt.Fprintf(&sb, "- Wave length (m): %s\n", fmtPtr(b.WaveLength.Value))

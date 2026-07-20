@@ -2,10 +2,22 @@ package main
 
 import "math"
 
+// BumpyScore Tuning Scales
+const (
+	steepnessMultiplier    = 400.0
+	windMultiplier         = 1.1
+	heightMultiplier       = 30.0
+	heightExponent         = 2.0
+	northerWavesMultiplier = 1.3
+)
+
 // Calculates the BumpyScore™.
 // What we need is real world data to refine this
 // We are doing the calculation tailored for Vineyard Sound right now.
 // In the future we will take into account locations
+//
+// TODO: This is the manual calculation. As of today we only surface the AI calculation,
+// but I would like to fine tune this more, maybe with the help of a physicist or mathematician.
 func calculateDaBumpyScore(waveHeight, wavelength, waveDirection, windDirection, windSpeed *float64) bumpyScoreResult {
 	disclaimers := []string{"This score is tailored to Northern Atlantic waters"}
 

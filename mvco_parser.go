@@ -52,7 +52,7 @@ type MvcoReading struct {
 // Sensors drop out independently, so fields may come from different timestamps
 // (all guaranteed within the last hour). Time is the newest contributing row.
 //
-// Assumes records are in ascending time order (as the MVCO feed is).
+// Rows may arrive in any order: each field keeps the value from its newest row.
 func parseMvcoRecentReading(data string) (MvcoReading, error) {
 	cutoff := time.Now().Add(-time.Hour)
 
@@ -64,6 +64,10 @@ func parseMvcoRecentReading(data string) (MvcoReading, error) {
 	}
 
 	var out MvcoReading
+	// fieldTimes records the source timestamp of each field currently in out, so a
+	// field is only replaced by a strictly newer reading — independent of the
+	// order rows arrive in.
+	fieldTimes := make(map[**float64]time.Time)
 	found := false
 	for {
 		rec, err := cr.Read()
@@ -80,8 +84,10 @@ func parseMvcoRecentReading(data string) (MvcoReading, error) {
 		if row.Time.Before(cutoff) {
 			continue // older than an hour → ignore
 		}
-		if mergeReading(&out, row) {
-			out.Time = row.Time
+		if mergeReading(&out, fieldTimes, row) {
+			if row.Time.After(out.Time) {
+				out.Time = row.Time
+			}
 			found = true
 		}
 	}
@@ -91,15 +97,22 @@ func parseMvcoRecentReading(data string) (MvcoReading, error) {
 	return out, nil
 }
 
-// mergeReading copies every non-nil field from in into out, overwriting.
-// Returns true if at least one field was set.
-func mergeReading(out *MvcoReading, in MvcoReading) bool {
+// mergeReading copies each non-nil field from in into out, but only when in is
+// newer than the reading currently supplying that field (tracked by field
+// address in fieldTimes). Returns true if at least one field was set. This makes
+// the result independent of the order rows are fed in.
+func mergeReading(out *MvcoReading, fieldTimes map[**float64]time.Time, in MvcoReading) bool {
 	any := false
 	set := func(dst **float64, src *float64) {
-		if src != nil {
-			*dst = src
-			any = true
+		if src == nil {
+			return
 		}
+		if last, ok := fieldTimes[dst]; ok && !in.Time.After(last) {
+			return // already have a value from a newer (or equal) row
+		}
+		*dst = src
+		fieldTimes[dst] = in.Time
+		any = true
 	}
 
 	set(&out.WaveHeightSig, in.WaveHeightSig)

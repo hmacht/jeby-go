@@ -5,8 +5,6 @@ package main
 
 import "log"
 
-const MarthasVineyardAverageDepthMeters = 13.0
-
 // Conditions is the full Vineyard conditions response for one vessel: the vessel
 // it's for, that vessel's BumpyScore, and the ocean readings from each station
 // we pull.
@@ -81,7 +79,7 @@ func buildMvcoStationConditions() StationConditions {
 	return StationConditions{
 		WaveHeight:            measure(reading.WaveHeightSig, unitMeters),
 		WavePeriod:            measure(reading.WavePeriodDom, unitSeconds),
-		WaveLength:            measure(calculateWaveLength(reading.WaveHeightSig, reading.WavePeriodDom, ptr(MarthasVineyardAverageDepthMeters)), unitMeters),
+		WaveLength:            measure(calculateWaveLength(reading.WaveHeightSig, reading.WavePeriodDom, stationDepth(stationMVCO)), unitMeters),
 		WindSpeed:             measure(reading.WindSpeedMean, unitMetersPerSecond),
 		WindDirection:         measure(reading.WindDirectionMean, unitDegrees),
 		WindDirectionCardinal: calculateCardinalDirection(reading.WindDirectionMean),
@@ -89,18 +87,27 @@ func buildMvcoStationConditions() StationConditions {
 	}
 }
 
-// buildBuoyStationConditions pulls the NOAA buoy realtime feed and averages it
-// into a StationConditions. Any failure is logged and returns empty readings.
+// buildBuoyStationConditions pulls the NOAA buoy realtime feed and shapes the
+// latest reading into a StationConditions. Any failure is logged and returns
+// empty (all-nil) readings.
 func buildBuoyStationConditions() StationConditions {
 	data, err := fetchRealtimeBuoyData(vineyardBuoyID)
 	if err != nil {
 		log.Printf("conditions: buoy fetch: %v", err)
 		return emptyStationConditions()
 	}
-	buoy, err := calculateNoaaConditions(data, ptr(MarthasVineyardAverageDepthMeters))
+	reading, err := parseRecentBuoyReading(data)
 	if err != nil {
 		log.Printf("conditions: buoy parse: %v", err)
 		return emptyStationConditions()
 	}
-	return buoy
+	return StationConditions{
+		WaveHeight:            measure(reading.WaveHeight, unitMeters),
+		WavePeriod:            measure(reading.WavePeriod, unitSeconds),
+		WaveLength:            measure(calculateWaveLength(reading.WaveHeight, reading.WavePeriod, stationDepth(stationBuoy)), unitMeters),
+		WindSpeed:             measure(reading.WindSpeed, unitMetersPerSecond),
+		WindDirection:         measure(reading.WindDirection, unitDegrees),
+		WindDirectionCardinal: calculateCardinalDirection(reading.WindDirection),
+		WaterTemp:             measure(reading.WaterTemp, unitCelsius),
+	}
 }

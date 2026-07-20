@@ -18,7 +18,7 @@ type Vessel struct {
 // in the AI prompt. The three named boats are specific; SMALL/MEDIUM/LARGE are
 // generic size classes described by ranges.
 var vessels = []Vessel{
-	{Code: "SSA", Name: "Steamship", Description: "Large Steamship Authority car-and-passenger ferry, it can carry 18 wheelers!.", Weight: "unknown", Length: "255 ft", Horsepower: "6,000 HP", MaxPassengers: "1,210"},
+	{Code: "SSA", Name: "Steamship", Description: "Large Steamship Authority car-and-passenger ferry, there vary in size and shape, but they are always very large (they can carry 18 wheelers!).", Weight: "unknown", Length: "255 ft", Horsepower: "6,000 HP", MaxPassengers: "1,210"},
 	{Code: "IQ", Name: "Island Queen", Description: "The queen herself. Passenger ferry running between Falmouth and Oak Bluffs. Serves drinks and candy at the bar! Front bow is fun for all ages.", Weight: "99 tons", Length: "125 ft", Horsepower: "1,000 HP", MaxPassengers: "522"},
 	{Code: "F215", Name: "Grady White Freedom 215", Description: "21.5 ft Freedom 215 duel console. Its long heavy hull slices the swells differntly than lets say a 17' Boston Whaler Montauk", Weight: "3,150 lb", Length: "21.5 ft", Horsepower: "150 HP", MaxPassengers: "8"},
 	{Code: "SMALL", Name: "Small Craft", Description: "Small recreational craft such as skiffs, runabouts, and small center consoles.", Weight: "under 5,000 lb", Length: "under 26 ft", Horsepower: "25-300 HP", MaxPassengers: "4-8"},

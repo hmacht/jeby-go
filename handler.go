@@ -9,12 +9,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// This API is Vineyard-only, so the NOAA identifiers are fixed.
-const (
-	vineyardBuoyID = "44020"  // Nantucket Sound buoy
-	vineyardZoneID = "ANZ233" // Vineyard Sound marine zone
-)
-
 type bumpyScoreResult struct {
 	Score       *int     `json:"score"`
 	Disclaimers []string `json:"disclaimers"`
