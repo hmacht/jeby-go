@@ -28,6 +28,20 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
+	// Background BumpyScore worker: compute the score off the request path and
+	// serve it from the store. Root context is cancelled on shutdown below.
+	rootCtx, cancelWorkers := context.WithCancel(context.Background())
+	defer cancelWorkers()
+
+	bumpy := newBumpyStore()
+	if bumpyScoreWorkerDisabled() {
+		log.Print("BumpyScore worker disabled: BUMPY_SCORE_WORKER_DISABLED is set")
+	} else if ai, err := newAIClient(); err != nil {
+		log.Printf("BumpyScore worker disabled: %v", err)
+	} else {
+		startBumpyScoreWorker(rootCtx, ai, bumpy, bumpyScoreRefreshInterval())
+	}
+
 	router := gin.Default()
 
 	router.GET("/healthz", func(c *gin.Context) {
@@ -37,10 +51,12 @@ func main() {
 	v1 := router.Group("/api/v1")
 	v1.Use(middleware.APIKeyAuth(apiKey))
 	{
-		v1.GET("/marine/buoys/:buoyId/conditions", getMarineConditions)
-		v1.GET("/marine/buoys/:buoyId/images", getBuoyImages)
-		v1.GET("/marine/zones/:zoneId/forecast/summary", getMarineForcastSummary)
-		v1.GET("/marine/zones/:zoneId/alerts/active", getActiveAlerts)
+		v1.GET("/vessels", getVessels)
+		v1.GET("/stations", getStations)
+		v1.GET("/conditions", getConditions(bumpy))
+		v1.GET("/images", getImages)
+		v1.GET("/forecast/marine", getMarineForcastSummary)
+		v1.GET("/alerts", getActiveAlerts)
 	}
 
 	srv := &http.Server{

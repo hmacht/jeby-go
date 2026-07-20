@@ -8,6 +8,13 @@ import (
 	"strings"
 )
 
+// This API is Vineyard-only, so the NOAA identifiers are fixed.
+const (
+	vineyardBuoyID = "44020"  // Nantucket Sound buoy
+	vineyardZoneID = "ANZ233" // Vineyard Sound marine zone
+)
+
+// Shape for NOAA Alert from API call
 type noaaAlerts struct {
 	Title    string `json:"title"`
 	Features []struct {

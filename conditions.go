@@ -1,218 +1,113 @@
+// Conditions assembly — pulls each station's live readings and shapes them into
+// the unified Vineyard conditions payload. Kept out of the HTTP handlers so the
+// handler just reads the BumpyScore store and calls these.
 package main
 
-import (
-	"math"
-)
+import "log"
 
-// These are the Realtime2 columns
+// Conditions is the full Vineyard conditions response for one vessel: the vessel
+// it's for, that vessel's BumpyScore, and the ocean readings from each station
+// we pull.
+type Conditions struct {
+	Vessel     Vessel            `json:"vessel"`
+	BumpyScore bumpyScoreResult  `json:"bumpyScore"`
+	MVCO       StationConditions `json:"mvco"`
+	Buoy       StationConditions `json:"buoy"`
+}
+
+// StationConditions are the ocean readings from a single station (the MVCO
+// sensor or the NOAA buoy). Each reading carries its own unit so the value is
+// never ambiguous; cardinal direction is a bare label with no unit.
+type StationConditions struct {
+	WaveHeight            Measurement `json:"waveHeight"`
+	WavePeriod            Measurement `json:"wavePeriod"`
+	WaveLength            Measurement `json:"waveLength"`
+	WindSpeed             Measurement `json:"windSpeed"`
+	WindDirection         Measurement `json:"windDirectionDegrees"`
+	WindDirectionCardinal *string     `json:"windDirectionCardinal"`
+	WaterTemp             Measurement `json:"waterTemp"`
+}
+
+// Measurement is a numeric reading paired with its unit. Value is nil when the
+// sensor didn't report; Unit is always set since it's a property of the field,
+// not the reading.
+type Measurement struct {
+	Value *float64 `json:"value"`
+	Unit  string   `json:"unit"`
+}
+
+// Units for station readings.
 const (
-	colYear = iota
-	colMonth
-	colDay
-	colHour
-	colMinute
-	colWindDir
-	colWindSpeed
-	colGust
-	colWaveHeight
-	colDomPeriod
-	colAvgPeriod
-	colMeanWaveDir
-	colPressure
-	colAirTemp
-	colWaterTemp
-	colDewpoint
-	colVisibility
-	colPressureTendency
-	colTide
+	unitMeters          = "m"
+	unitSeconds         = "s"
+	unitMetersPerSecond = "m/s"
+	unitDegrees         = "deg"
+	unitCelsius         = "C"
 )
 
-// The number of columns we got
-const columnLength = 18
+// measure pairs a value with its unit.
+func measure(value *float64, unit string) Measurement {
+	return Measurement{Value: value, Unit: unit}
+}
 
-// TODO: tune this
-const weightDensityConstant = 5.0
+// emptyStationConditions is an all-units, no-values station, used when a source
+// is unavailable so the response shape (and units) stays consistent.
+func emptyStationConditions() StationConditions {
+	return StationConditions{
+		WaveHeight:    measure(nil, unitMeters),
+		WavePeriod:    measure(nil, unitSeconds),
+		WaveLength:    measure(nil, unitMeters),
+		WindSpeed:     measure(nil, unitMetersPerSecond),
+		WindDirection: measure(nil, unitDegrees),
+		WaterTemp:     measure(nil, unitCelsius),
+	}
+}
 
-// BumpyScore Tuning Scales
-const (
-	steepnessMultiplier    = 400.0
-	windMultiplier         = 1.1
-	heightMultiplier       = 30.0
-	heightExponent         = 2.0
-	northerWavesMultiplier = 1.3
-	ratioMultiplierX1      = 30.0
-	ratioMultiplierX2      = 15.0
-	ratioMultiplierX3      = 0.0
-)
-
-// Given the NOAA realtime file dataset, lets calculate some conditions
-// This is all tailored to Marthas Vineyard, MA
-//
-// Realtime2 data header
-// YY  MM DD hh mm WDIR WSPD GST  WVHT   DPD   APD MWD   PRES  ATMP  WTMP  DEWP  VIS PTDY  TIDE
-// yr  mo dy hr mn degT m/s  m/s     m   sec   sec degT   hPa  degC  degC  degC  nmi  hPa    ft
-func calculateMarineConditions(data string, boat boat, avgOceanDepth *float64) (marineConditions, error) {
-	readings, err := parseRealtime2(data, 5)
+// buildMvcoStationConditions pulls the latest MVCO reading and shapes it into a
+// StationConditions. Any failure is logged and returns empty (all-nil) readings.
+func buildMvcoStationConditions() StationConditions {
+	mvcoData, err := fetchMvcoData()
+	if err != nil || mvcoData == nil {
+		log.Printf("conditions: mvco fetch: %v", err)
+		return emptyStationConditions()
+	}
+	reading, err := parseMvcoRecentReading(*mvcoData)
 	if err != nil {
-		// TODO: handle error
+		log.Printf("conditions: mvco parse: %v", err)
+		return emptyStationConditions()
 	}
-	windSpeedAvg := average(readings, func(r BuoyReading) *float64 { return r.WindSpeed })
-	windDirectionAvg := average(readings, func(r BuoyReading) *float64 { return r.WindDirection })
-	waveHeightAvg := average(readings, func(r BuoyReading) *float64 { return r.WaveHeight })
-	wavePeriodAvg := average(readings, func(r BuoyReading) *float64 { return r.WavePeriod })
-	waterTempAvg := average(readings, func(r BuoyReading) *float64 { return r.WaterTemp })
-	waveDirectionAvg := average(readings, func(r BuoyReading) *float64 { return r.WaveDirection })
-
-	waveLengthAvg := calculateWaveLength(waveHeightAvg, wavePeriodAvg, avgOceanDepth)
-
-	return marineConditions{
-		WaveHeight:            waveHeightAvg,
-		WavePeriod:            wavePeriodAvg,
-		WaveLength:            waveLengthAvg,
-		WindSpeed:             windSpeedAvg,
-		WindDirection:         windDirectionAvg,
-		WindDirectionCardinal: calculateCardinalDirection(windDirectionAvg),
-		BumpyScore:            calculateDaBumpyScore(waveHeightAvg, waveLengthAvg, waveDirectionAvg, windDirectionAvg, windSpeedAvg, boat),
-		WaterTemp:             waterTempAvg,
-	}, nil
-}
-
-// Given a list of buoy readings, this will some he average of a field
-func average(readings []BuoyReading, getField func(BuoyReading) *float64) *float64 {
-	var sum float64
-	var count int
-	for _, reading := range readings {
-		if v := getField(reading); v != nil {
-			sum += *v
-			count++
-		}
-	}
-	if count == 0 {
-		return nil
-	}
-	result := round(sum/float64(count), 2)
-	return &result
-}
-
-// Calculates the BumpyScore™.
-// What we need is real world data to refine this
-// We are doing the calculation tailored for Vineyard Sound right now.
-// In the future we will take into account locations
-func calculateDaBumpyScore(waveHeight, wavelength, waveDirection, windDirection, windSpeed *float64, boat boat) bumpyScoreResult {
-	disclaimers := []string{"This score is tailored to Northern Atlantic waters"}
-
-	// Validate core data
-	if waveHeight == nil || wavelength == nil || windSpeed == nil {
-		disclaimers = append(disclaimers, "Could not pull one of the core metrics from buoy: Wave Height, Wave Length, Wind Speed.")
-		return bumpyScoreResult{
-			Score:       nil,
-			Disclaimers: disclaimers,
-		}
-	}
-
-	// Validate non essensial data
-	if waveDirection == nil && windDirection != nil {
-		disclaimers = append(disclaimers, "Used wind direction as substitute for wave direction.")
-		waveDirection = windDirection
-	} else {
-		disclaimers = append(disclaimers, "Wave direction is not accounted for.")
-	}
-
-	// Steepness
-	steepness := *waveHeight / *wavelength
-	steepnessDamping := math.Min(*waveHeight/1.0, 1.0)
-	steepnessScore := steepness * steepnessMultiplier * steepnessDamping
-
-	// Wind
-	windScore := *windSpeed * windMultiplier
-
-	// Heigh
-	//
-	// Expenationa from 1-5 ft waves
-	// The wave direction is a multipliter on the hight
-	// Norther waves are much rougher, 30% bang
-	heightScore := math.Pow(*waveHeight, heightExponent) * heightMultiplier
-	if waveDirection != nil && (*waveDirection >= 315 || *waveDirection <= 45) {
-		heightScore *= northerWavesMultiplier
-	}
-
-	// Wavelength
-	//
-	// Wave length is super importat lets see if this thang has hobby-horsing
-	// There is a sweetspot on a boat where if wave length is in, the boat keeps smashing into waves.
-	// But tighter waves ride smoothly under boat.
-	// Ratio < 1 means wavelength shorter than the boat itself — worst case.
-	// Ratio > 2-3 means the boat rides over smoothly — minimal penalty.
-	lengthRatio := *wavelength / boat.Length
-	var ratioMultiplier float64
-	switch {
-	case lengthRatio < 1:
-		ratioMultiplier = ratioMultiplierX1
-	case lengthRatio < 2:
-		ratioMultiplier = ratioMultiplierX2
-	default:
-		ratioMultiplier = ratioMultiplierX3
-	}
-
-	// Scale the ratio penalty by wave height
-	ratioScore := ratioMultiplier * math.Min(*waveHeight/1.0, 1.0)
-
-	// We dampen the rockyness if the boat is heavier
-	// The 1.5 is just a cap for lighter boats
-	expectedWeight := weightDensityConstant * boat.Length * boat.Length * boat.Length
-	weightFactor := math.Min(expectedWeight/boat.Weight, 1.5)
-
-	motionScore := (heightScore + steepnessScore + ratioScore) * weightFactor
-	bumpyScore := motionScore + windScore
-
-	// Score cant exceed 100
-	if bumpyScore > 100 {
-		bumpyScore = 100
-	}
-
-	// Score cant be below 0
-	if bumpyScore < 0 {
-		bumpyScore = 0
-	}
-
-	return bumpyScoreResult{
-		Score:       new(int(round(bumpyScore, 0))),
-		Disclaimers: disclaimers,
+	return StationConditions{
+		WaveHeight:            measure(reading.WaveHeightSig, unitMeters),
+		WavePeriod:            measure(reading.WavePeriodDom, unitSeconds),
+		WaveLength:            measure(calculateWaveLength(reading.WaveHeightSig, reading.WavePeriodDom, stationDepth(stationMVCO)), unitMeters),
+		WindSpeed:             measure(reading.WindSpeedMean, unitMetersPerSecond),
+		WindDirection:         measure(reading.WindDirectionMean, unitDegrees),
+		WindDirectionCardinal: calculateCardinalDirection(reading.WindDirectionMean),
+		WaterTemp:             measure(nil, unitCelsius),
 	}
 }
 
-func calculateCardinalDirection(degrees *float64) *string {
-	if degrees == nil {
-		return nil
+// buildBuoyStationConditions pulls the NOAA buoy realtime feed and shapes the
+// latest reading into a StationConditions. Any failure is logged and returns
+// empty (all-nil) readings.
+func buildBuoyStationConditions() StationConditions {
+	data, err := fetchRealtimeBuoyData(vineyardBuoyID)
+	if err != nil {
+		log.Printf("conditions: buoy fetch: %v", err)
+		return emptyStationConditions()
 	}
-
-	directions := []string{"N", "NE", "E", "SE", "S", "SW", "W", "NW"}
-	index := int(math.Round(*degrees/45)) % 8
-	result := directions[index]
-	return &result
-}
-
-// Calculate the legth of the wave using the wave dispersion theory
-// L = (g·T² / 2π) × tanh(2π·d / L
-// Reference: https://www.oas.org/cdcm_train/courses/course21/chap_05.pdf
-func calculateWaveLength(height, period, depth *float64) *float64 {
-	if height == nil || period == nil {
-		return nil
+	reading, err := parseRecentBuoyReading(data)
+	if err != nil {
+		log.Printf("conditions: buoy parse: %v", err)
+		return emptyStationConditions()
 	}
-
-	g := 9.81
-	deepL := (g * (*period) * (*period)) / (2 * math.Pi)
-
-	// If we dont have a depth then just return deepsea calculation
-	if depth == nil {
-		roundedDeepL := round(deepL, 2)
-		return &roundedDeepL
+	return StationConditions{
+		WaveHeight:            measure(reading.WaveHeight, unitMeters),
+		WavePeriod:            measure(reading.WavePeriod, unitSeconds),
+		WaveLength:            measure(calculateWaveLength(reading.WaveHeight, reading.WavePeriod, stationDepth(stationBuoy)), unitMeters),
+		WindSpeed:             measure(reading.WindSpeed, unitMetersPerSecond),
+		WindDirection:         measure(reading.WindDirection, unitDegrees),
+		WindDirectionCardinal: calculateCardinalDirection(reading.WindDirection),
+		WaterTemp:             measure(reading.WaterTemp, unitCelsius),
 	}
-
-	L := deepL
-	for range 50 { // iterate to solve the dispersion relation
-		L = deepL * math.Tanh(2*math.Pi*(*depth)/L)
-	}
-	roundedL := round(L, 2)
-	return &roundedL
 }
